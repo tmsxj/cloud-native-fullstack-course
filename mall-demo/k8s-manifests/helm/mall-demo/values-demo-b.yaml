@@ -1,0 +1,76 @@
+# Demo-B: Pure Golang
+global:
+  namespace: "demo-b-golang"
+  imagePrefix: "demo-b"
+
+imagePrefix: "demo-b"
+
+apiGateway:
+  image: "demo-b-gateway"
+  ingress:
+    enabled: true
+    host: "mall-b.local"
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "250m"
+
+userService:
+  image: "demo-b-user-svc"
+  dbName: "mall_user"
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "250m"
+
+orderService:
+  image: "demo-b-order-svc"
+  dbName: "mall_order"
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "250m"
+
+inventoryService:
+  image: "demo-b-inventory-svc"
+  dbName: "mall_inventory"
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "250m"
+
+paymentService:
+  image: "demo-b-payment-svc"
+  dbName: "mall_payment"
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "250m"
+
+notificationService:
+  image: "demo-b-notification-svc"
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "250m"
+
+serviceMonitor:
+  path: "/metrics"

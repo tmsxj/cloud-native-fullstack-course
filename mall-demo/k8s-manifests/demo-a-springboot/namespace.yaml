@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-a-springboot
+  labels:
+    app.kubernetes.io/part-of: mall-demo
+    app.kubernetes.io/environment: demo-a
+    istio-injection: enabled

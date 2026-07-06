@@ -1,0 +1,76 @@
+# Demo-C: Hybrid (Spring Boot + Go)
+global:
+  namespace: "demo-c-hybrid"
+  imagePrefix: "demo-c"
+
+imagePrefix: "demo-c"
+
+# Go服务 - 轻量资源
+apiGateway:
+  image: "demo-c-api-gateway"
+  ingress:
+    enabled: true
+    host: "mall-c.local"
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "250m"
+
+userService:
+  image: "demo-c-user-service"
+  dbName: "mall_user"
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "250m"
+
+# Spring Boot服务 - 重量级资源
+orderService:
+  image: "demo-c-order-service"
+  dbName: "mall_order"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+inventoryService:
+  image: "demo-c-inventory-service"
+  dbName: "mall_inventory"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Go服务 - 轻量资源
+paymentService:
+  image: "demo-c-payment-service"
+  dbName: "mall_payment"
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "250m"
+
+notificationService:
+  image: "demo-c-notification-service"
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "250m"

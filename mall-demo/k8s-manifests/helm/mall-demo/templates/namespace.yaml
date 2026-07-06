@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.global.namespace }}
+  labels:
+    app.kubernetes.io/part-of: mall-demo
+    app.kubernetes.io/environment: {{ .Values.global.namespace }}
+    {{- if .Values.global.istio.enabled }}
+    istio-injection: enabled
+    {{- end }}

@@ -1,0 +1,147 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: demo-a-springboot
+  labels:
+    app: payment-service
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/part-of: mall-demo
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: payment-service
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: payment-service
+        app.kubernetes.io/name: payment-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: mall-demo-sa
+      containers:
+        - name: payment-service
+          image: 192.168.1.61:80/mall/demo-a-payment-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: mall-config
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: mall-config
+                  key: DB_PORT
+            - name: DB_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: mall-config
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  name: mall-config
+                  key: DB_PASSWORD
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: mall-config
+                  key: PAYMENT_DB_NAME
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: mall-config
+                  key: REDIS_HOST
+            - name: REDIS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: mall-config
+                  key: REDIS_PORT
+            - name: REDIS_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  name: mall-config
+                  key: REDIS_PASSWORD
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: mall-config
+                  key: OTEL_EXPORTER_OTLP_ENDPOINT
+            - name: OTEL_SERVICE_NAME
+              value: "payment-service"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: payment-service
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: payment-service
+                topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: demo-a-springboot
+  labels:
+    app: payment-service
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/part-of: mall-demo
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app: payment-service

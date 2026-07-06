@@ -1,0 +1,757 @@
+# GitLab CI/CD Configuration for Demo-A Spring Boot Microservices
+# 支持6个服务并行构建: user-service, order-service, inventory-service, payment-service, notification-service, api-gateway
+# 阶段: build → test → security → package → push → deploy
+
+variables:
+  # Maven配置
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Dorg.slf4j.simpleLogger.showDateTime=true -Djava.awt.headless=true"
+  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version"
+
+  # Harbor镜像仓库配置
+  HARBOR_REGISTRY: "192.168.1.61:80"
+  HARBOR_PROJECT: "mall-demo"
+  IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
+
+  # SonarQube配置
+  SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+  GIT_DEPTH: "0"
+
+  # K8s配置
+  K8S_NAMESPACE: "mall-demo-a"
+  ARGOCD_APP_PREFIX: "demo-a"
+
+# 定义阶段
+stages:
+  - build
+  - test
+  - security
+  - package
+  - push
+  - deploy
+
+# 全局缓存配置
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - .m2/repository/
+
+# 定义服务列表
+.services:
+  - &service_user "user-service"
+  - &service_order "order-service"
+  - &service_inventory "inventory-service"
+  - &service_payment "payment-service"
+  - &service_notification "notification-service"
+  - &service_gateway "api-gateway"
+
+# =============================================================================
+# BUILD STAGE - 编译阶段
+# =============================================================================
+
+build:user-service:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17-alpine
+  script:
+    - cd user-service
+    - mvn $MAVEN_CLI_OPTS compile
+  artifacts:
+    paths:
+      - user-service/target/classes/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:order-service:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17-alpine
+  script:
+    - cd order-service
+    - mvn $MAVEN_CLI_OPTS compile
+  artifacts:
+    paths:
+      - order-service/target/classes/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:inventory-service:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17-alpine
+  script:
+    - cd inventory-service
+    - mvn $MAVEN_CLI_OPTS compile
+  artifacts:
+    paths:
+      - inventory-service/target/classes/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:payment-service:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17-alpine
+  script:
+    - cd payment-service
+    - mvn $MAVEN_CLI_OPTS compile
+  artifacts:
+    paths:
+      - payment-service/target/classes/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:notification-service:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17-alpine
+  script:
+    - cd notification-service
+    - mvn $MAVEN_CLI_OPTS compile
+  artifacts:
+    paths:
+      - notification-service/target/classes/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:api-gateway:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17-alpine
+  script:
+    - cd api-gateway
+    - mvn $MAVEN_CLI_OPTS compile
+  artifacts:
+    paths:
+      - api-gateway/target/classes/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# TEST STAGE - 测试阶段
+# =============================================================================
+
+test:user-service:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: build:user-service
+      artifacts: true
+  script:
+    - cd user-service
+    - mvn $MAVEN_CLI_OPTS test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - user-service/target/surefire-reports/TEST-*.xml
+    paths:
+      - user-service/target/surefire-reports/
+      - user-service/target/site/jacoco/
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:order-service:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: build:order-service
+      artifacts: true
+  script:
+    - cd order-service
+    - mvn $MAVEN_CLI_OPTS test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - order-service/target/surefire-reports/TEST-*.xml
+    paths:
+      - order-service/target/surefire-reports/
+      - order-service/target/site/jacoco/
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:inventory-service:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: build:inventory-service
+      artifacts: true
+  script:
+    - cd inventory-service
+    - mvn $MAVEN_CLI_OPTS test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - inventory-service/target/surefire-reports/TEST-*.xml
+    paths:
+      - inventory-service/target/surefire-reports/
+      - inventory-service/target/site/jacoco/
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:payment-service:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: build:payment-service
+      artifacts: true
+  script:
+    - cd payment-service
+    - mvn $MAVEN_CLI_OPTS test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - payment-service/target/surefire-reports/TEST-*.xml
+    paths:
+      - payment-service/target/surefire-reports/
+      - payment-service/target/site/jacoco/
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:notification-service:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: build:notification-service
+      artifacts: true
+  script:
+    - cd notification-service
+    - mvn $MAVEN_CLI_OPTS test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - notification-service/target/surefire-reports/TEST-*.xml
+    paths:
+      - notification-service/target/surefire-reports/
+      - notification-service/target/site/jacoco/
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:api-gateway:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: build:api-gateway
+      artifacts: true
+  script:
+    - cd api-gateway
+    - mvn $MAVEN_CLI_OPTS test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - api-gateway/target/surefire-reports/TEST-*.xml
+    paths:
+      - api-gateway/target/surefire-reports/
+      - api-gateway/target/site/jacoco/
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# SECURITY STAGE - 安全扫描阶段
+# =============================================================================
+
+# Trivy文件系统扫描
+security:trivy-fs-scan:
+  stage: security
+  image: aquasec/trivy:latest
+  needs:
+    - job: build:user-service
+      artifacts: false
+    - job: build:order-service
+      artifacts: false
+    - job: build:inventory-service
+      artifacts: false
+    - job: build:payment-service
+      artifacts: false
+    - job: build:notification-service
+      artifacts: false
+    - job: build:api-gateway
+      artifacts: false
+  script:
+    - trivy filesystem --scanners vuln,secret,config --format table --exit-code 0 --severity HIGH,CRITICAL .
+    - trivy filesystem --scanners vuln,secret,config --format json -o trivy-fs-report.json --exit-code 0 .
+    - trivy filesystem --scanners vuln,secret,config --format sarif -o trivy-fs-report.sarif --exit-code 0 .
+  artifacts:
+    when: always
+    paths:
+      - trivy-fs-report.json
+      - trivy-fs-report.sarif
+    reports:
+      sast: trivy-fs-report.sarif
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# SonarQube代码分析
+security:sonarqube:
+  stage: security
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: test:user-service
+      artifacts: true
+    - job: test:order-service
+      artifacts: true
+    - job: test:inventory-service
+      artifacts: true
+    - job: test:payment-service
+      artifacts: true
+    - job: test:notification-service
+      artifacts: true
+    - job: test:api-gateway
+      artifacts: true
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  script:
+    - |
+      mvn $MAVEN_CLI_OPTS sonar:sonar \
+        -Dsonar.host.url=$SONAR_HOST_URL \
+        -Dsonar.token=$SONAR_TOKEN \
+        -Dsonar.projectKey=mall-demo-a \
+        -Dsonar.projectName="Mall Demo A - Spring Boot" \
+        -Dsonar.qualitygate.wait=true \
+        -Dsonar.coverage.jacoco.xmlReportPaths=\
+          user-service/target/site/jacoco/jacoco.xml,\
+          order-service/target/site/jacoco/jacoco.xml,\
+          inventory-service/target/site/jacoco/jacoco.xml,\
+          payment-service/target/site/jacoco/jacoco.xml,\
+          notification-service/target/site/jacoco/jacoco.xml,\
+          api-gateway/target/site/jacoco/jacoco.xml
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# 依赖漏洞扫描 (OWASP Dependency Check)
+security:dependency-check:
+  stage: security
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs: []
+  script:
+    - mvn $MAVEN_CLI_OPTS org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=9
+  artifacts:
+    when: always
+    paths:
+      - target/dependency-check-report.html
+      - target/dependency-check-report.json
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# PACKAGE STAGE - 打包阶段
+# =============================================================================
+
+package:user-service:
+  stage: package
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: test:user-service
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:sonarqube
+  script:
+    - cd user-service
+    - mvn $MAVEN_CLI_OPTS package -DskipTests
+  artifacts:
+    paths:
+      - user-service/target/*.jar
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:order-service:
+  stage: package
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: test:order-service
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:sonarqube
+  script:
+    - cd order-service
+    - mvn $MAVEN_CLI_OPTS package -DskipTests
+  artifacts:
+    paths:
+      - order-service/target/*.jar
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:inventory-service:
+  stage: package
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: test:inventory-service
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:sonarqube
+  script:
+    - cd inventory-service
+    - mvn $MAVEN_CLI_OPTS package -DskipTests
+  artifacts:
+    paths:
+      - inventory-service/target/*.jar
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:payment-service:
+  stage: package
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: test:payment-service
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:sonarqube
+  script:
+    - cd payment-service
+    - mvn $MAVEN_CLI_OPTS package -DskipTests
+  artifacts:
+    paths:
+      - payment-service/target/*.jar
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:notification-service:
+  stage: package
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: test:notification-service
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:sonarqube
+  script:
+    - cd notification-service
+    - mvn $MAVEN_CLI_OPTS package -DskipTests
+  artifacts:
+    paths:
+      - notification-service/target/*.jar
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:api-gateway:
+  stage: package
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: test:api-gateway
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:sonarqube
+  script:
+    - cd api-gateway
+    - mvn $MAVEN_CLI_OPTS package -DskipTests
+  artifacts:
+    paths:
+      - api-gateway/target/*.jar
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# PUSH STAGE - 镜像构建和推送阶段
+# =============================================================================
+
+# 模板: Docker构建和推送
+.docker_build_template: &docker_build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USER" --password-stdin $HARBOR_REGISTRY
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_DRIVER: overlay2
+
+push:user-service:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:user-service
+      artifacts: true
+  script:
+    - cd user-service
+    - docker build -t $HARBOR_REGISTRY/$HARBOR_PROJECT/user-service:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/user-service:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/user-service:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/user-service:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/user-service:latest
+    # Trivy镜像扫描
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/user-service:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:order-service:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:order-service
+      artifacts: true
+  script:
+    - cd order-service
+    - docker build -t $HARBOR_REGISTRY/$HARBOR_PROJECT/order-service:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/order-service:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/order-service:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/order-service:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/order-service:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/order-service:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:inventory-service:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:inventory-service
+      artifacts: true
+  script:
+    - cd inventory-service
+    - docker build -t $HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-service:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-service:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-service:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-service:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-service:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-service:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:payment-service:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:payment-service
+      artifacts: true
+  script:
+    - cd payment-service
+    - docker build -t $HARBOR_REGISTRY/$HARBOR_PROJECT/payment-service:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/payment-service:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/payment-service:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/payment-service:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/payment-service:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/payment-service:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:notification-service:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:notification-service
+      artifacts: true
+  script:
+    - cd notification-service
+    - docker build -t $HARBOR_REGISTRY/$HARBOR_PROJECT/notification-service:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/notification-service:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/notification-service:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/notification-service:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/notification-service:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/notification-service:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:api-gateway:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:api-gateway
+      artifacts: true
+  script:
+    - cd api-gateway
+    - docker build -t $HARBOR_REGISTRY/$HARBOR_PROJECT/api-gateway:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/api-gateway:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/api-gateway:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/api-gateway:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/api-gateway:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/api-gateway:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# DEPLOY STAGE - 部署阶段
+# =============================================================================
+
+deploy:trigger-argocd:
+  stage: deploy
+  image: alpine/curl:latest
+  needs:
+    - job: push:user-service
+    - job: push:order-service
+    - job: push:inventory-service
+    - job: push:payment-service
+    - job: push:notification-service
+    - job: push:api-gateway
+  script:
+    - |
+      echo "Triggering ArgoCD sync for all services..."
+      for service in user-service order-service inventory-service payment-service notification-service api-gateway; do
+        echo "Syncing $ARGOCD_APP_PREFIX-$service..."
+        curl -X POST "$ARGOCD_SERVER/api/v1/applications/$ARGOCD_APP_PREFIX-$service/sync"
+          -H "Authorization: Bearer $ARGOCD_TOKEN"
+          -H "Content-Type: application/json"
+          -d '{"prune": true, "dryRun": false, "strategy": {"hook": {"force": false}}}'
+      done
+  environment:
+    name: production
+    url: http://mall-demo.local
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+      when: manual
+
+deploy:kubectl:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  needs:
+    - job: push:user-service
+    - job: push:order-service
+    - job: push:inventory-service
+    - job: push:payment-service
+    - job: push:notification-service
+    - job: push:api-gateway
+  script:
+    - kubectl config use-context $K8S_CONTEXT
+    - kubectl set image deployment/user-service
+      user-service=$HARBOR_REGISTRY/$HARBOR_PROJECT/user-service:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/order-service
+      order-service=$HARBOR_REGISTRY/$HARBOR_PROJECT/order-service:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/inventory-service
+      inventory-service=$HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-service:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/payment-service
+      payment-service=$HARBOR_REGISTRY/$HARBOR_PROJECT/payment-service:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/notification-service
+      notification-service=$HARBOR_REGISTRY/$HARBOR_PROJECT/notification-service:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/api-gateway
+      api-gateway=$HARBOR_REGISTRY/$HARBOR_PROJECT/api-gateway:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl rollout status deployment/user-service -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/order-service -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/inventory-service -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/payment-service -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/notification-service -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/api-gateway -n $K8S_NAMESPACE --timeout=300s
+  environment:
+    name: production
+    url: http://mall-demo.local
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+      when: manual
+
+# =============================================================================
+# 辅助任务
+# =============================================================================
+
+# 生成SBOM
+sbom:generate:
+  stage: .post
+  image: maven:3.9-eclipse-temurin-17-alpine
+  needs:
+    - job: package:user-service
+      artifacts: true
+    - job: package:order-service
+      artifacts: true
+    - job: package:inventory-service
+      artifacts: true
+    - job: package:payment-service
+      artifacts: true
+    - job: package:notification-service
+      artifacts: true
+    - job: package:api-gateway
+      artifacts: true
+  script:
+    - mvn $MAVEN_CLI_OPTS org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom
+  artifacts:
+    paths:
+      - target/bom.xml
+      - target/bom.json
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+  allow_failure: true
+
+# 清理工作
+cleanup:
+  stage: .post
+  image: alpine:latest
+  script:
+    - echo "Cleaning up temporary artifacts..."
+  when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/

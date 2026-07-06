@@ -1,0 +1,21 @@
+[Unit]
+Description=Monit - process and system monitoring daemon
+Documentation=https://mmonit.com/monit/documentation/
+After=network.target syslog.service
+ConditionPathExists=/usr/local/bin/monit
+ConditionPathExists=/etc/monit/monitrc
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/monit -I -c /etc/monit/monitrc
+ExecStop=/usr/local/bin/monit quit
+ExecReload=/usr/local/bin/monit reload
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=monit
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

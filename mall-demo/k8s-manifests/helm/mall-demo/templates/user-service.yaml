@@ -1,0 +1,80 @@
+{{- if .Values.userService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: user-service
+    {{- include "mall-demo.labels" (dict "name" "user-service" "Chart" .Chart "Release" .Release) | nindent 4 }}
+spec:
+  replicas: {{ .Values.userService.replicaCount }}
+  selector:
+    matchLabels:
+      app: user-service
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: user-service
+      annotations:
+        {{- include "mall-demo.prometheusAnnotations" (dict "metricsPath" .Values.serviceMonitor.path) | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: user-service
+          image: {{ .Values.global.imageRegistry }}/{{ .Values.imagePrefix }}-{{ .Values.userService.image }}:{{ .Values.global.imageTag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            {{- include "mall-demo.dbEnv" (dict "Values" .Values "dbName" .Values.userService.dbName) | nindent 12 }}
+            {{- include "mall-demo.redisEnv" (dict "Values" .Values) | nindent 12 }}
+            {{- include "mall-demo.otelEnv" (dict "Values" .Values "serviceName" "user-service") | nindent 12 }}
+          resources:
+            {{- toYaml .Values.userService.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+      {{- include "mall-demo.topologySpread" (dict "Values" .Values "serviceName" "user-service") | nindent 6 }}
+      {{- include "mall-demo.antiAffinity" (dict "serviceName" "user-service") | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: user-service
+    {{- include "mall-demo.labels" (dict "name" "user-service" "Chart" .Chart "Release" .Release) | nindent 4 }}
+spec:
+  type: {{ .Values.userService.service.type }}
+  ports:
+    - port: {{ .Values.userService.service.port }}
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app: user-service
+{{- end }}

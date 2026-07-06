@@ -1,0 +1,156 @@
+# =============================================
+# Mall Demo Helm Chart - Default Values
+# =============================================
+
+# 全局配置
+global:
+  imageRegistry: "192.168.1.61:80"
+  imagePullPolicy: Always
+  imageTag: "latest"
+  namespace: "demo-a-springboot"
+  istio:
+    enabled: false
+    gateway: "istio-system/mall-gateway"
+  otel:
+    enabled: true
+    endpoint: "otel-collector.monitoring:4317"
+  db:
+    host: "192.168.1.61"
+    port: "3306"
+    username: "root"
+    password: "Harbor12345"
+  redis:
+    host: "192.168.1.61"
+    port: "6379"
+    password: "Harbor12345"
+  kafka:
+    brokers: "192.168.1.61:9092"
+  nacos:
+    host: "192.168.1.61"
+    port: "8848"
+
+# 镜像前缀 (根据demo类型不同)
+imagePrefix: "demo-a"
+
+# ServiceAccount
+serviceAccount:
+  create: true
+  name: "mall-demo-sa"
+
+# API Gateway
+apiGateway:
+  enabled: true
+  replicaCount: 2
+  image: ""
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  service:
+    type: ClusterIP
+    port: 8080
+  ingress:
+    enabled: true
+    host: "mall-a.local"
+    className: "nginx"
+
+# User Service
+userService:
+  enabled: true
+  replicaCount: 2
+  image: ""
+  dbName: "mall_user"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  service:
+    type: ClusterIP
+    port: 8080
+
+# Order Service
+orderService:
+  enabled: true
+  replicaCount: 2
+  image: ""
+  dbName: "mall_order"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  service:
+    type: ClusterIP
+    port: 8080
+
+# Inventory Service
+inventoryService:
+  enabled: true
+  replicaCount: 2
+  image: ""
+  dbName: "mall_inventory"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  service:
+    type: ClusterIP
+    port: 8080
+
+# Payment Service
+paymentService:
+  enabled: true
+  replicaCount: 2
+  image: ""
+  dbName: "mall_payment"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  service:
+    type: ClusterIP
+    port: 8080
+
+# Notification Service
+notificationService:
+  enabled: true
+  replicaCount: 2
+  image: ""
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  service:
+    type: ClusterIP
+    port: 8080
+
+# ServiceMonitor (Prometheus)
+serviceMonitor:
+  enabled: true
+  interval: "15s"
+  path: "/actuator/prometheus"
+  labels:
+    release: "prometheus"
+
+# Topology Spread Constraints
+topologySpread:
+  enabled: true
+  maxSkew: 1
+  topologyKey: "kubernetes.io/hostname"

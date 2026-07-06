@@ -1,0 +1,122 @@
+###############################################################################
+## Monit 控制文件 — t1 测试环境
+## 集成 32 个诊断/修复脚本
+## 版本: v2.0 | 日期: 2026-06-27
+###############################################################################
+
+## ==================== 守护进程设置 ====================
+set daemon  60
+  with start delay 10
+
+set log /var/log/monit.log
+set idfile /var/lib/monit/id
+set statefile /var/lib/monit/state
+
+## ==================== 告警设置 ====================
+set alert nobody@localhost
+
+## ==================== Web 状态界面 (仅本地) ====================
+set httpd port 2812
+  use address 127.0.0.1
+  allow 127.0.0.1
+
+## ==================== 全局包含 ====================
+include /etc/monit/conf.d/*.cfg
+
+
+###############################################################################
+## ==================== 系统级监控 ====================
+###############################################################################
+
+check system $HOST
+  if loadavg (1min) > 8 then alert
+  if loadavg (5min) > 4 then alert
+  if memory usage > 90% for 3 cycles then alert
+  if swap usage > 50% for 3 cycles then alert
+  if cpu usage (user) > 90% for 5 cycles then alert
+  if cpu usage (system) > 70% for 5 cycles then alert
+
+
+###############################################################################
+## ==================== 文件系统监控 ====================
+###############################################################################
+
+check filesystem rootfs with path /
+  if space usage > 80% for 3 cycles then alert
+  if space usage > 85% for 2 cycles then
+    exec "/home/tmsxj/linux-scripts/auto-fix/fix-disk-full.sh"
+    repeat every 10 cycles
+  if inode usage > 80% for 3 cycles then alert
+
+
+###############################################################################
+## ==================== 进程监控 ====================
+###############################################################################
+
+check process sshd with pidfile /run/sshd.pid
+  start program = "/usr/bin/systemctl start ssh"
+  stop program  = "/usr/bin/systemctl stop ssh"
+  if failed port 22 protocol ssh for 3 cycles then restart
+  if 3 restarts within 5 cycles then unmonitor
+  if memory usage > 100 MB for 5 cycles then alert
+
+check process cron with pidfile /run/crond.pid
+  start program = "/usr/bin/systemctl start cron"
+  stop program  = "/usr/bin/systemctl stop cron"
+
+check process rsyslogd with pidfile /run/rsyslogd.pid
+  start program = "/usr/bin/systemctl start rsyslog"
+  stop program  = "/usr/bin/systemctl stop rsyslog"
+  if 3 restarts within 5 cycles then unmonitor
+
+check process systemd-journald with pidfile /run/systemd/journald.pid
+  start program = "/usr/bin/systemctl start systemd-journald"
+  stop program  = "/usr/bin/systemctl stop systemd-journald"
+
+
+###############################################################################
+## ==================== 自定义脚本集成 ====================
+## 检查脚本约定: 退出码0=正常, 非0=异常
+###############################################################################
+
+# 僵尸进程: 退出码1=僵尸>5, 触发修复
+check program zombie-check with path "/home/tmsxj/linux-scripts/auto-fix/monit-check-zombie.sh"
+  if status != 0 then exec "/home/tmsxj/linux-scripts/auto-fix/fix-zombie.sh"
+  if status != 0 for 3 cycles then alert
+
+# 失败服务: 退出码1=有失败服务, 触发修复
+check program failed-services with path "/home/tmsxj/linux-scripts/auto-fix/monit-check-services.sh"
+  if status != 0 then exec "/home/tmsxj/linux-scripts/auto-fix/fix-service.sh --all"
+  if status != 0 for 3 cycles then alert
+
+# FD使用率: 退出码1=超过80%, 告警
+check program fd-usage-warn with path "/bin/bash -c 'NR=$(cat /proc/sys/fs/file-nr 2>/dev/null | awk \"{print \\$1}\"); MAX=$(cat /proc/sys/fs/file-max 2>/dev/null); [ \"$MAX\" -gt 0 ] || exit 0; P=$((NR*100/MAX)); [ \"$P\" -le 80 ]'"
+  if status != 0 then alert
+  if status != 0 for 3 cycles then exec "/home/tmsxj/linux-scripts/auto-fix/fix-fd-limit.sh"
+
+
+###############################################################################
+## ==================== K8s 节点专有监控 (34-k8s-node) ====================
+###############################################################################
+
+# conntrack 表使用率: 退出码2=严重(>90%), 1=警告(>70%)
+check program conntrack-check with path "/home/tmsxj/linux-scripts/34-k8s-node/check-conntrack.sh"
+  if status = 2 then exec "/home/tmsxj/linux-scripts/auto-fix/fix-conntrack.sh"
+  if status = 2 for 3 cycles then alert
+  if status = 1 for 5 cycles then alert
+
+# iptables 规则数爆炸: 退出码2=严重(>10000), 1=警告(>5000)
+check program iptables-check with path "/home/tmsxj/linux-scripts/34-k8s-node/check-iptables.sh"
+  if status = 2 for 2 cycles then alert
+  if status = 1 for 5 cycles then alert
+
+# inotify 资源不足: 退出码2=严重(>90%), 1=警告(>70%)
+check program inotify-check with path "/home/tmsxj/linux-scripts/34-k8s-node/check-inotify.sh"
+  if status = 2 then exec "/home/tmsxj/linux-scripts/auto-fix/fix-inotify.sh"
+  if status = 2 for 2 cycles then alert
+  if status = 1 for 3 cycles then alert
+
+# PID 耗尽风险: 退出码2=严重(>85%), 1=警告(>60%)
+check program pid-check with path "/home/tmsxj/linux-scripts/34-k8s-node/check-pid.sh"
+  if status = 2 for 2 cycles then alert
+  if status = 1 for 3 cycles then alert

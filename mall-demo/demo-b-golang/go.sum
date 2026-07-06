@@ -1,0 +1,3 @@
+# Run `go mod tidy` to generate the proper go.sum file
+# This file is intentionally left as a placeholder.
+# After running `go mod tidy`, the correct checksums will be generated.

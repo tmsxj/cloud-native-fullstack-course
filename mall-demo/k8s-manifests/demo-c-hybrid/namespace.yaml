@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-c-hybrid
+  labels:
+    app.kubernetes.io/part-of: mall-demo
+    app.kubernetes.io/environment: demo-c
+    istio-injection: enabled

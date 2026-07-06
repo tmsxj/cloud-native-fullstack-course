@@ -1,0 +1,56 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: payment-service
+  datasource:
+    url: jdbc:mysql://192.168.1.61:3306/mall_payment?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: Harbor12345
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 5
+      idle-timeout: 30000
+      max-lifetime: 1800000
+      connection-timeout: 10000
+  data:
+    redis:
+      host: 192.168.1.61
+      port: 6379
+      password: Harbor12345
+      lettuce:
+        pool:
+          min-idle: 1
+          max-idle: 3
+          max-active: 5
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 192.168.1.61:8848
+        namespace: public
+        register-enabled: true
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+logging:
+  level:
+    com.demo.payment: INFO
+    com.demo.payment.mapper: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

@@ -1,0 +1,68 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: jdbc:mysql://192.168.1.61:3306/mall_order?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: Harbor12345
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 5
+      idle-timeout: 30000
+      max-lifetime: 1800000
+      connection-timeout: 10000
+  data:
+    redis:
+      host: 192.168.1.61
+      port: 6379
+      password: Harbor12345
+      lettuce:
+        pool:
+          min-idle: 1
+          max-idle: 3
+          max-active: 5
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 192.168.1.61:8848
+        namespace: public
+        register-enabled: true
+  kafka:
+    bootstrap-servers: 192.168.1.61:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: 1
+      retries: 3
+    consumer:
+      group-id: order-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+logging:
+  level:
+    com.demo.order: INFO
+    com.demo.order.mapper: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

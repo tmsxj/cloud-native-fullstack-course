@@ -1,0 +1,789 @@
+# GitLab CI/CD Configuration for Demo-B Go Microservices
+# 支持6个服务并行构建: user-svc, order-svc, inventory-svc, payment-svc, notification-svc, gateway
+# 阶段: build → test → security → package → push → deploy
+
+variables:
+  # Go配置
+  GO_VERSION: "1.21"
+  GOPROXY: "https://goproxy.cn,direct"
+  GOSUMDB: "off"
+  CGO_ENABLED: "0"
+  GOOS: "linux"
+  GOARCH: "amd64"
+
+  # Harbor镜像仓库配置
+  HARBOR_REGISTRY: "192.168.1.61:80"
+  HARBOR_PROJECT: "mall-demo"
+  IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
+
+  # SonarQube配置
+  SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+  GIT_DEPTH: "0"
+
+  # K8s配置
+  K8S_NAMESPACE: "mall-demo-b"
+  ARGOCD_APP_PREFIX: "demo-b"
+
+# 定义阶段
+stages:
+  - build
+  - test
+  - security
+  - package
+  - push
+  - deploy
+
+# 全局缓存配置
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - /go/pkg/mod/
+    - .go-cache/
+
+# Go模块模板
+.go_template: &go_build
+  image: golang:${GO_VERSION}-alpine
+  before_script:
+    - apk add --no-cache git make
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+    - go mod download
+
+# =============================================================================
+# BUILD STAGE - 编译阶段
+# =============================================================================
+
+build:user-svc:
+  stage: build
+  <<: *go_build
+  script:
+    - cd cmd/user-svc
+    - go build -v -o ../../bin/user-svc .
+  artifacts:
+    paths:
+      - bin/user-svc
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:order-svc:
+  stage: build
+  <<: *go_build
+  script:
+    - cd cmd/order-svc
+    - go build -v -o ../../bin/order-svc .
+  artifacts:
+    paths:
+      - bin/order-svc
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:inventory-svc:
+  stage: build
+  <<: *go_build
+  script:
+    - cd cmd/inventory-svc
+    - go build -v -o ../../bin/inventory-svc .
+  artifacts:
+    paths:
+      - bin/inventory-svc
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:payment-svc:
+  stage: build
+  <<: *go_build
+  script:
+    - cd cmd/payment-svc
+    - go build -v -o ../../bin/payment-svc .
+  artifacts:
+    paths:
+      - bin/payment-svc
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:notification-svc:
+  stage: build
+  <<: *go_build
+  script:
+    - cd cmd/notification-svc
+    - go build -v -o ../../bin/notification-svc .
+  artifacts:
+    paths:
+      - bin/notification-svc
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:gateway:
+  stage: build
+  <<: *go_build
+  script:
+    - cd cmd/gateway
+    - go build -v -o ../../bin/gateway .
+  artifacts:
+    paths:
+      - bin/gateway
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# TEST STAGE - 测试阶段
+# =============================================================================
+
+test:user-svc:
+  stage: test
+  <<: *go_build
+  needs:
+    - job: build:user-svc
+      artifacts: false
+  script:
+    - go test -v -race -coverprofile=coverage-user.out -covermode=atomic ./internal/user/...
+    - go tool cover -html=coverage-user.out -o coverage-user.html
+  artifacts:
+    when: always
+    reports:
+      junit: report-user.xml
+    paths:
+      - coverage-user.out
+      - coverage-user.html
+  coverage: '/total:\s*\(statements\)\s*(\d+\.?\d*)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:order-svc:
+  stage: test
+  <<: *go_build
+  needs:
+    - job: build:order-svc
+      artifacts: false
+  script:
+    - go test -v -race -coverprofile=coverage-order.out -covermode=atomic ./internal/order/...
+    - go tool cover -html=coverage-order.out -o coverage-order.html
+  artifacts:
+    when: always
+    reports:
+      junit: report-order.xml
+    paths:
+      - coverage-order.out
+      - coverage-order.html
+  coverage: '/total:\s*\(statements\)\s*(\d+\.?\d*)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:inventory-svc:
+  stage: test
+  <<: *go_build
+  needs:
+    - job: build:inventory-svc
+      artifacts: false
+  script:
+    - go test -v -race -coverprofile=coverage-inventory.out -covermode=atomic ./internal/inventory/...
+    - go tool cover -html=coverage-inventory.out -o coverage-inventory.html
+  artifacts:
+    when: always
+    reports:
+      junit: report-inventory.xml
+    paths:
+      - coverage-inventory.out
+      - coverage-inventory.html
+  coverage: '/total:\s*\(statements\)\s*(\d+\.?\d*)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:payment-svc:
+  stage: test
+  <<: *go_build
+  needs:
+    - job: build:payment-svc
+      artifacts: false
+  script:
+    - go test -v -race -coverprofile=coverage-payment.out -covermode=atomic ./internal/payment/...
+    - go tool cover -html=coverage-payment.out -o coverage-payment.html
+  artifacts:
+    when: always
+    reports:
+      junit: report-payment.xml
+    paths:
+      - coverage-payment.out
+      - coverage-payment.html
+  coverage: '/total:\s*\(statements\)\s*(\d+\.?\d*)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:notification-svc:
+  stage: test
+  <<: *go_build
+  needs:
+    - job: build:notification-svc
+      artifacts: false
+  script:
+    - go test -v -race -coverprofile=coverage-notification.out -covermode=atomic ./internal/notification/...
+    - go tool cover -html=coverage-notification.out -o coverage-notification.html
+  artifacts:
+    when: always
+    reports:
+      junit: report-notification.xml
+    paths:
+      - coverage-notification.out
+      - coverage-notification.html
+  coverage: '/total:\s*\(statements\)\s*(\d+\.?\d*)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:gateway:
+  stage: test
+  <<: *go_build
+  needs:
+    - job: build:gateway
+      artifacts: false
+  script:
+    - go test -v -race -coverprofile=coverage-gateway.out -covermode=atomic ./internal/gateway/...
+    - go tool cover -html=coverage-gateway.out -o coverage-gateway.html
+  artifacts:
+    when: always
+    reports:
+      junit: report-gateway.xml
+    paths:
+      - coverage-gateway.out
+      - coverage-gateway.html
+  coverage: '/total:\s*\(statements\)\s*(\d+\.?\d*)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# SECURITY STAGE - 安全扫描阶段
+# =============================================================================
+
+# Trivy文件系统扫描
+security:trivy-fs-scan:
+  stage: security
+  image: aquasec/trivy:latest
+  needs:
+    - job: build:user-svc
+      artifacts: false
+    - job: build:order-svc
+      artifacts: false
+    - job: build:inventory-svc
+      artifacts: false
+    - job: build:payment-svc
+      artifacts: false
+    - job: build:notification-svc
+      artifacts: false
+    - job: build:gateway
+      artifacts: false
+  script:
+    - trivy filesystem --scanners vuln,secret,config --format table --exit-code 0 --severity HIGH,CRITICAL .
+    - trivy filesystem --scanners vuln,secret,config --format json -o trivy-fs-report.json --exit-code 0 .
+    - trivy filesystem --scanners vuln,secret,config --format sarif -o trivy-fs-report.sarif --exit-code 0 .
+  artifacts:
+    when: always
+    paths:
+      - trivy-fs-report.json
+      - trivy-fs-report.sarif
+    reports:
+      sast: trivy-fs-report.sarif
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# Gosec安全扫描
+security:gosec:
+  stage: security
+  image: securego/gosec:latest
+  needs:
+    - job: build:user-svc
+      artifacts: false
+  script:
+    - gosec -fmt sarif -out gosec-report.sarif ./...
+    - gosec -fmt json -out gosec-report.json ./...
+  artifacts:
+    when: always
+    paths:
+      - gosec-report.sarif
+      - gosec-report.json
+    reports:
+      sast: gosec-report.sarif
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# Go依赖漏洞扫描 (govulncheck)
+security:govulncheck:
+  stage: security
+  image: golang:${GO_VERSION}-alpine
+  needs: []
+  before_script:
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+    - go install golang.org/x/vuln/cmd/govulncheck@latest
+  script:
+    - govulncheck -format sarif ./... > govulncheck-report.sarif || true
+    - govulncheck -format json ./... > govulncheck-report.json || true
+  artifacts:
+    when: always
+    paths:
+      - govulncheck-report.sarif
+      - govulncheck-report.json
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# SonarQube代码分析
+security:sonarqube:
+  stage: security
+  image:
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  needs:
+    - job: test:user-svc
+      artifacts: true
+    - job: test:order-svc
+      artifacts: true
+    - job: test:inventory-svc
+      artifacts: true
+    - job: test:payment-svc
+      artifacts: true
+    - job: test:notification-svc
+      artifacts: true
+    - job: test:gateway
+      artifacts: true
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  script:
+    - |
+      sonar-scanner \
+        -Dsonar.host.url=$SONAR_HOST_URL \
+        -Dsonar.token=$SONAR_TOKEN \
+        -Dsonar.projectKey=mall-demo-b \
+        -Dsonar.projectName="Mall Demo B - Go" \
+        -Dsonar.language=go \
+        -Dsonar.sources=. \
+        -Dsonar.exclusions="**/vendor/**,**/bin/**,**/*_test.go" \
+        -Dsonar.tests=. \
+        -Dsonar.test.inclusions="**/*_test.go" \
+        -Dsonar.go.coverage.reportPaths="coverage-user.out,coverage-order.out,coverage-inventory.out,coverage-payment.out,coverage-notification.out,coverage-gateway.out" \
+        -Dsonar.qualitygate.wait=true
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# PACKAGE STAGE - 打包阶段
+# =============================================================================
+
+package:user-svc:
+  stage: package
+  <<: *go_build
+  needs:
+    - job: build:user-svc
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:gosec
+    - job: security:sonarqube
+  script:
+    - cd cmd/user-svc
+    - go build -ldflags="-s -w -X main.version=$CI_COMMIT_SHA -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o ../../bin/user-svc .
+  artifacts:
+    paths:
+      - bin/user-svc
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:order-svc:
+  stage: package
+  <<: *go_build
+  needs:
+    - job: build:order-svc
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:gosec
+    - job: security:sonarqube
+  script:
+    - cd cmd/order-svc
+    - go build -ldflags="-s -w -X main.version=$CI_COMMIT_SHA -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o ../../bin/order-svc .
+  artifacts:
+    paths:
+      - bin/order-svc
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:inventory-svc:
+  stage: package
+  <<: *go_build
+  needs:
+    - job: build:inventory-svc
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:gosec
+    - job: security:sonarqube
+  script:
+    - cd cmd/inventory-svc
+    - go build -ldflags="-s -w -X main.version=$CI_COMMIT_SHA -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o ../../bin/inventory-svc .
+  artifacts:
+    paths:
+      - bin/inventory-svc
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:payment-svc:
+  stage: package
+  <<: *go_build
+  needs:
+    - job: build:payment-svc
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:gosec
+    - job: security:sonarqube
+  script:
+    - cd cmd/payment-svc
+    - go build -ldflags="-s -w -X main.version=$CI_COMMIT_SHA -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o ../../bin/payment-svc .
+  artifacts:
+    paths:
+      - bin/payment-svc
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:notification-svc:
+  stage: package
+  <<: *go_build
+  needs:
+    - job: build:notification-svc
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:gosec
+    - job: security:sonarqube
+  script:
+    - cd cmd/notification-svc
+    - go build -ldflags="-s -w -X main.version=$CI_COMMIT_SHA -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o ../../bin/notification-svc .
+  artifacts:
+    paths:
+      - bin/notification-svc
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:gateway:
+  stage: package
+  <<: *go_build
+  needs:
+    - job: build:gateway
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:gosec
+    - job: security:sonarqube
+  script:
+    - cd cmd/gateway
+    - go build -ldflags="-s -w -X main.version=$CI_COMMIT_SHA -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o ../../bin/gateway .
+  artifacts:
+    paths:
+      - bin/gateway
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# PUSH STAGE - 镜像构建和推送阶段
+# =============================================================================
+
+# 模板: Docker构建和推送
+.docker_build_template: &docker_build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USER" --password-stdin $HARBOR_REGISTRY
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_DRIVER: overlay2
+
+push:user-svc:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:user-svc
+      artifacts: true
+  script:
+    - docker build -f docker/Dockerfile.user-svc -t $HARBOR_REGISTRY/$HARBOR_PROJECT/user-svc:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/user-svc:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/user-svc:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/user-svc:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/user-svc:latest
+    # Trivy镜像扫描
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/user-svc:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:order-svc:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:order-svc
+      artifacts: true
+  script:
+    - docker build -f docker/Dockerfile.order-svc -t $HARBOR_REGISTRY/$HARBOR_PROJECT/order-svc:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/order-svc:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/order-svc:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/order-svc:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/order-svc:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/order-svc:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:inventory-svc:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:inventory-svc
+      artifacts: true
+  script:
+    - docker build -f docker/Dockerfile.inventory-svc -t $HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-svc:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-svc:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-svc:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-svc:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-svc:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-svc:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:payment-svc:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:payment-svc
+      artifacts: true
+  script:
+    - docker build -f docker/Dockerfile.payment-svc -t $HARBOR_REGISTRY/$HARBOR_PROJECT/payment-svc:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/payment-svc:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/payment-svc:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/payment-svc:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/payment-svc:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/payment-svc:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:notification-svc:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:notification-svc
+      artifacts: true
+  script:
+    - docker build -f docker/Dockerfile.notification-svc -t $HARBOR_REGISTRY/$HARBOR_PROJECT/notification-svc:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/notification-svc:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/notification-svc:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/notification-svc:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/notification-svc:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/notification-svc:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:gateway:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:gateway
+      artifacts: true
+  script:
+    - docker build -f docker/Dockerfile.gateway -t $HARBOR_REGISTRY/$HARBOR_PROJECT/gateway:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/gateway:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/gateway:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/gateway:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/gateway:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/gateway:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# DEPLOY STAGE - 部署阶段
+# =============================================================================
+
+deploy:trigger-argocd:
+  stage: deploy
+  image: alpine/curl:latest
+  needs:
+    - job: push:user-svc
+    - job: push:order-svc
+    - job: push:inventory-svc
+    - job: push:payment-svc
+    - job: push:notification-svc
+    - job: push:gateway
+  script:
+    - |
+      echo "Triggering ArgoCD sync for all services..."
+      for service in user-svc order-svc inventory-svc payment-svc notification-svc gateway; do
+        echo "Syncing $ARGOCD_APP_PREFIX-$service..."
+        curl -X POST "$ARGOCD_SERVER/api/v1/applications/$ARGOCD_APP_PREFIX-$service/sync"
+          -H "Authorization: Bearer $ARGOCD_TOKEN"
+          -H "Content-Type: application/json"
+          -d '{"prune": true, "dryRun": false, "strategy": {"hook": {"force": false}}}'
+      done
+  environment:
+    name: production
+    url: http://mall-demo.local
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+      when: manual
+
+deploy:kubectl:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  needs:
+    - job: push:user-svc
+    - job: push:order-svc
+    - job: push:inventory-svc
+    - job: push:payment-svc
+    - job: push:notification-svc
+    - job: push:gateway
+  script:
+    - kubectl config use-context $K8S_CONTEXT
+    - kubectl set image deployment/user-svc
+      user-svc=$HARBOR_REGISTRY/$HARBOR_PROJECT/user-svc:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/order-svc
+      order-svc=$HARBOR_REGISTRY/$HARBOR_PROJECT/order-svc:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/inventory-svc
+      inventory-svc=$HARBOR_REGISTRY/$HARBOR_PROJECT/inventory-svc:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/payment-svc
+      payment-svc=$HARBOR_REGISTRY/$HARBOR_PROJECT/payment-svc:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/notification-svc
+      notification-svc=$HARBOR_REGISTRY/$HARBOR_PROJECT/notification-svc:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/gateway
+      gateway=$HARBOR_REGISTRY/$HARBOR_PROJECT/gateway:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl rollout status deployment/user-svc -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/order-svc -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/inventory-svc -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/payment-svc -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/notification-svc -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/gateway -n $K8S_NAMESPACE --timeout=300s
+  environment:
+    name: production
+    url: http://mall-demo.local
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+      when: manual
+
+# =============================================================================
+# 辅助任务
+# =============================================================================
+
+# 生成SBOM
+sbom:generate:
+  stage: .post
+  image: golang:${GO_VERSION}-alpine
+  needs:
+    - job: package:user-svc
+      artifacts: true
+    - job: package:order-svc
+      artifacts: true
+    - job: package:inventory-svc
+      artifacts: true
+    - job: package:payment-svc
+      artifacts: true
+    - job: package:notification-svc
+      artifacts: true
+    - job: package:gateway
+      artifacts: true
+  before_script:
+    - apk add --no-cache curl
+    - curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+  script:
+    - syft packages dir:. -o cyclonedx-json > sbom.json
+    - syft packages dir:. -o spdx-json > sbom-spdx.json
+  artifacts:
+    paths:
+      - sbom.json
+      - sbom-spdx.json
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+  allow_failure: true
+
+# 清理工作
+cleanup:
+  stage: .post
+  image: alpine:latest
+  script:
+    - echo "Cleaning up temporary artifacts..."
+  when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/

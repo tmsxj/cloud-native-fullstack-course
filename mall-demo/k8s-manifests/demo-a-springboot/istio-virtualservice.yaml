@@ -1,0 +1,94 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: api-gateway-vs
+  namespace: demo-a-springboot
+spec:
+  hosts:
+    - "api-gateway.demo-a-springboot.svc.cluster.local"
+    - "mall-a.local"
+  gateways:
+    - istio-system/mall-gateway
+    - mesh
+  http:
+    - match:
+        - uri:
+            prefix: /api/v1/users
+      rewrite:
+        uri: /users
+      route:
+        - destination:
+            host: user-service
+            port:
+              number: 8080
+          weight: 100
+    - match:
+        - uri:
+            prefix: /api/v1/orders
+      rewrite:
+        uri: /orders
+      route:
+        - destination:
+            host: order-service
+            port:
+              number: 8080
+          weight: 100
+    - match:
+        - uri:
+            prefix: /api/v1/inventory
+      rewrite:
+        uri: /inventory
+      route:
+        - destination:
+            host: inventory-service
+            port:
+              number: 8080
+          weight: 100
+    - match:
+        - uri:
+            prefix: /api/v1/payments
+      rewrite:
+        uri: /payments
+      route:
+        - destination:
+            host: payment-service
+            port:
+              number: 8080
+          weight: 100
+    - match:
+        - uri:
+            prefix: /api/v1/notifications
+      rewrite:
+        uri: /notifications
+      route:
+        - destination:
+            host: notification-service
+            port:
+              number: 8080
+          weight: 100
+    - route:
+        - destination:
+            host: api-gateway
+            port:
+              number: 8080
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: services-destination
+  namespace: demo-a-springboot
+spec:
+  host: "*.demo-a-springboot.svc.cluster.local"
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        h2UpgradePolicy: DEFAULT
+        http1MaxPendingRequests: 1024
+        http2MaxRequests: 1024
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50

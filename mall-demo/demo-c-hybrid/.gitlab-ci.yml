@@ -1,0 +1,917 @@
+# GitLab CI/CD Configuration for Demo-C Hybrid Microservices
+# 混合构建: Go服务 + Spring Boot服务
+# 阶段: build → test → security → package → push → deploy
+
+variables:
+  # Maven配置
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Dorg.slf4j.simpleLogger.showDateTime=true -Djava.awt.headless=true"
+  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version"
+
+  # Go配置
+  GO_VERSION: "1.21"
+  GOPROXY: "https://goproxy.cn,direct"
+  GOSUMDB: "off"
+  CGO_ENABLED: "0"
+  GOOS: "linux"
+  GOARCH: "amd64"
+
+  # Harbor镜像仓库配置
+  HARBOR_REGISTRY: "192.168.1.61:80"
+  HARBOR_PROJECT: "mall-demo"
+  IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
+
+  # SonarQube配置
+  SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+  GIT_DEPTH: "0"
+
+  # K8s配置
+  K8S_NAMESPACE: "mall-demo-c"
+  ARGOCD_APP_PREFIX: "demo-c"
+
+# 定义阶段
+stages:
+  - build
+  - test
+  - security
+  - package
+  - push
+  - deploy
+
+# =============================================================================
+# 缓存配置
+# =============================================================================
+
+.maven_cache: &maven_cache
+  key: maven-${CI_COMMIT_REF_SLUG}
+  paths:
+    - .m2/repository/
+
+.go_cache: &go_cache
+  key: go-${CI_COMMIT_REF_SLUG}
+  paths:
+    - /go/pkg/mod/
+    - .go-cache/
+
+# =============================================================================
+# BUILD STAGE - 编译阶段 (Go服务)
+# =============================================================================
+
+build:api-gateway-go:
+  stage: build
+  image: golang:${GO_VERSION}-alpine
+  cache:
+    <<: *go_cache
+  before_script:
+    - apk add --no-cache git make
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+  script:
+    - cd api-gateway
+    - go mod download
+    - go build -v -o ../bin/api-gateway .
+  artifacts:
+    paths:
+      - bin/api-gateway
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:user-service-go:
+  stage: build
+  image: golang:${GO_VERSION}-alpine
+  cache:
+    <<: *go_cache
+  before_script:
+    - apk add --no-cache git make
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+  script:
+    - cd user-service
+    - go mod download
+    - go build -v -o ../bin/user-service .
+  artifacts:
+    paths:
+      - bin/user-service
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:payment-service-go:
+  stage: build
+  image: golang:${GO_VERSION}-alpine
+  cache:
+    <<: *go_cache
+  before_script:
+    - apk add --no-cache git make
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+  script:
+    - cd payment-service
+    - go mod download
+    - go build -v -o ../bin/payment-service .
+  artifacts:
+    paths:
+      - bin/payment-service
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:notification-service-go:
+  stage: build
+  image: golang:${GO_VERSION}-alpine
+  cache:
+    <<: *go_cache
+  before_script:
+    - apk add --no-cache git make
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+  script:
+    - cd notification-service
+    - go mod download
+    - go build -v -o ../bin/notification-service .
+  artifacts:
+    paths:
+      - bin/notification-service
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# BUILD STAGE - 编译阶段 (Spring Boot服务)
+# =============================================================================
+
+build:order-service-java:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17-alpine
+  cache:
+    <<: *maven_cache
+  script:
+    - cd order-service
+    - mvn $MAVEN_CLI_OPTS compile
+  artifacts:
+    paths:
+      - order-service/target/classes/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+build:inventory-service-java:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17-alpine
+  cache:
+    <<: *maven_cache
+  script:
+    - cd inventory-service
+    - mvn $MAVEN_CLI_OPTS compile
+  artifacts:
+    paths:
+      - inventory-service/target/classes/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^feature\/.*/
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# TEST STAGE - 测试阶段 (Go服务)
+# =============================================================================
+
+test:api-gateway-go:
+  stage: test
+  image: golang:${GO_VERSION}-alpine
+  cache:
+    <<: *go_cache
+  needs:
+    - job: build:api-gateway-go
+      artifacts: false
+  before_script:
+    - apk add --no-cache git
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+  script:
+    - cd api-gateway
+    - go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+    - go tool cover -html=coverage.out -o coverage.html
+  artifacts:
+    when: always
+    paths:
+      - api-gateway/coverage.out
+      - api-gateway/coverage.html
+  coverage: '/total:\s*\(statements\)\s*(\d+\.?\d*)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:user-service-go:
+  stage: test
+  image: golang:${GO_VERSION}-alpine
+  cache:
+    <<: *go_cache
+  needs:
+    - job: build:user-service-go
+      artifacts: false
+  before_script:
+    - apk add --no-cache git
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+  script:
+    - cd user-service
+    - go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+    - go tool cover -html=coverage.out -o coverage.html
+  artifacts:
+    when: always
+    paths:
+      - user-service/coverage.out
+      - user-service/coverage.html
+  coverage: '/total:\s*\(statements\)\s*(\d+\.?\d*)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:payment-service-go:
+  stage: test
+  image: golang:${GO_VERSION}-alpine
+  cache:
+    <<: *go_cache
+  needs:
+    - job: build:payment-service-go
+      artifacts: false
+  before_script:
+    - apk add --no-cache git
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+  script:
+    - cd payment-service
+    - go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+    - go tool cover -html=coverage.out -o coverage.html
+  artifacts:
+    when: always
+    paths:
+      - payment-service/coverage.out
+      - payment-service/coverage.html
+  coverage: '/total:\s*\(statements\)\s*(\d+\.?\d*)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:notification-service-go:
+  stage: test
+  image: golang:${GO_VERSION}-alpine
+  cache:
+    <<: *go_cache
+  needs:
+    - job: build:notification-service-go
+      artifacts: false
+  before_script:
+    - apk add --no-cache git
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+  script:
+    - cd notification-service
+    - go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+    - go tool cover -html=coverage.out -o coverage.html
+  artifacts:
+    when: always
+    paths:
+      - notification-service/coverage.out
+      - notification-service/coverage.html
+  coverage: '/total:\s*\(statements\)\s*(\d+\.?\d*)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# TEST STAGE - 测试阶段 (Spring Boot服务)
+# =============================================================================
+
+test:order-service-java:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17-alpine
+  cache:
+    <<: *maven_cache
+  needs:
+    - job: build:order-service-java
+      artifacts: true
+  script:
+    - cd order-service
+    - mvn $MAVEN_CLI_OPTS test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - order-service/target/surefire-reports/TEST-*.xml
+    paths:
+      - order-service/target/surefire-reports/
+      - order-service/target/site/jacoco/
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+test:inventory-service-java:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17-alpine
+  cache:
+    <<: *maven_cache
+  needs:
+    - job: build:inventory-service-java
+      artifacts: true
+  script:
+    - cd inventory-service
+    - mvn $MAVEN_CLI_OPTS test
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - inventory-service/target/surefire-reports/TEST-*.xml
+    paths:
+      - inventory-service/target/surefire-reports/
+      - inventory-service/target/site/jacoco/
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# SECURITY STAGE - 安全扫描阶段
+# =============================================================================
+
+# Trivy文件系统扫描
+security:trivy-fs-scan:
+  stage: security
+  image: aquasec/trivy:latest
+  needs:
+    - job: build:api-gateway-go
+      artifacts: false
+    - job: build:user-service-go
+      artifacts: false
+    - job: build:payment-service-go
+      artifacts: false
+    - job: build:notification-service-go
+      artifacts: false
+    - job: build:order-service-java
+      artifacts: false
+    - job: build:inventory-service-java
+      artifacts: false
+  script:
+    - trivy filesystem --scanners vuln,secret,config --format table --exit-code 0 --severity HIGH,CRITICAL .
+    - trivy filesystem --scanners vuln,secret,config --format json -o trivy-fs-report.json --exit-code 0 .
+    - trivy filesystem --scanners vuln,secret,config --format sarif -o trivy-fs-report.sarif --exit-code 0 .
+  artifacts:
+    when: always
+    paths:
+      - trivy-fs-report.json
+      - trivy-fs-report.sarif
+    reports:
+      sast: trivy-fs-report.sarif
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# Gosec安全扫描 (Go服务)
+security:gosec:
+  stage: security
+  image: securego/gosec:latest
+  needs:
+    - job: build:api-gateway-go
+      artifacts: false
+  script:
+    - gosec -fmt sarif -out gosec-report.sarif ./api-gateway/... ./user-service/... ./payment-service/... ./notification-service/... || true
+    - gosec -fmt json -out gosec-report.json ./api-gateway/... ./user-service/... ./payment-service/... ./notification-service/... || true
+  artifacts:
+    when: always
+    paths:
+      - gosec-report.sarif
+      - gosec-report.json
+    reports:
+      sast: gosec-report.sarif
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# Go依赖漏洞扫描
+security:govulncheck:
+  stage: security
+  image: golang:${GO_VERSION}-alpine
+  needs: []
+  before_script:
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+    - go install golang.org/x/vuln/cmd/govulncheck@latest
+  script:
+    - govulncheck -format sarif ./api-gateway/... ./user-service/... ./payment-service/... ./notification-service/... > govulncheck-report.sarif || true
+    - govulncheck -format json ./api-gateway/... ./user-service/... ./payment-service/... ./notification-service/... > govulncheck-report.json || true
+  artifacts:
+    when: always
+    paths:
+      - govulncheck-report.sarif
+      - govulncheck-report.json
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# Maven依赖漏洞扫描
+security:dependency-check:
+  stage: security
+  image: maven:3.9-eclipse-temurin-17-alpine
+  cache:
+    <<: *maven_cache
+  needs: []
+  script:
+    - cd order-service && mvn $MAVEN_CLI_OPTS org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=9
+    - cd ../inventory-service && mvn $MAVEN_CLI_OPTS org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=9
+  artifacts:
+    when: always
+    paths:
+      - order-service/target/dependency-check-report.html
+      - order-service/target/dependency-check-report.json
+      - inventory-service/target/dependency-check-report.html
+      - inventory-service/target/dependency-check-report.json
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# SonarQube代码分析
+security:sonarqube:
+  stage: security
+  image: sonarsource/sonar-scanner-cli:latest
+  needs:
+    - job: test:api-gateway-go
+      artifacts: true
+    - job: test:user-service-go
+      artifacts: true
+    - job: test:payment-service-go
+      artifacts: true
+    - job: test:notification-service-go
+      artifacts: true
+    - job: test:order-service-java
+      artifacts: true
+    - job: test:inventory-service-java
+      artifacts: true
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  script:
+    - |
+      sonar-scanner \
+        -Dsonar.host.url=$SONAR_HOST_URL \
+        -Dsonar.token=$SONAR_TOKEN \
+        -Dsonar.projectKey=mall-demo-c \
+        -Dsonar.projectName="Mall Demo C - Hybrid" \
+        -Dsonar.sources=. \
+        -Dsonar.exclusions="**/vendor/**,**/bin/**,**/target/**" \
+        -Dsonar.go.coverage.reportPaths="api-gateway/coverage.out,user-service/coverage.out,payment-service/coverage.out,notification-service/coverage.out" \
+        -Dsonar.coverage.jacoco.xmlReportPaths="order-service/target/site/jacoco/jacoco.xml,inventory-service/target/site/jacoco/jacoco.xml" \
+        -Dsonar.qualitygate.wait=true
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# PACKAGE STAGE - 打包阶段 (Go服务)
+# =============================================================================
+
+package:api-gateway-go:
+  stage: package
+  image: golang:${GO_VERSION}-alpine
+  cache:
+    <<: *go_cache
+  needs:
+    - job: build:api-gateway-go
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:gosec
+    - job: security:sonarqube
+  before_script:
+    - apk add --no-cache git
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+  script:
+    - cd api-gateway
+    - go build -ldflags="-s -w -X main.version=$CI_COMMIT_SHA -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o ../bin/api-gateway .
+  artifacts:
+    paths:
+      - bin/api-gateway
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:user-service-go:
+  stage: package
+  image: golang:${GO_VERSION}-alpine
+  cache:
+    <<: *go_cache
+  needs:
+    - job: build:user-service-go
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:gosec
+    - job: security:sonarqube
+  before_script:
+    - apk add --no-cache git
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+  script:
+    - cd user-service
+    - go build -ldflags="-s -w -X main.version=$CI_COMMIT_SHA -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o ../bin/user-service .
+  artifacts:
+    paths:
+      - bin/user-service
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:payment-service-go:
+  stage: package
+  image: golang:${GO_VERSION}-alpine
+  cache:
+    <<: *go_cache
+  needs:
+    - job: build:payment-service-go
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:gosec
+    - job: security:sonarqube
+  before_script:
+    - apk add --no-cache git
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+  script:
+    - cd payment-service
+    - go build -ldflags="-s -w -X main.version=$CI_COMMIT_SHA -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o ../bin/payment-service .
+  artifacts:
+    paths:
+      - bin/payment-service
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:notification-service-go:
+  stage: package
+  image: golang:${GO_VERSION}-alpine
+  cache:
+    <<: *go_cache
+  needs:
+    - job: build:notification-service-go
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:gosec
+    - job: security:sonarqube
+  before_script:
+    - apk add --no-cache git
+    - go env -w GOPROXY=${GOPROXY}
+    - go env -w GOSUMDB=${GOSUMDB}
+  script:
+    - cd notification-service
+    - go build -ldflags="-s -w -X main.version=$CI_COMMIT_SHA -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o ../bin/notification-service .
+  artifacts:
+    paths:
+      - bin/notification-service
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# PACKAGE STAGE - 打包阶段 (Spring Boot服务)
+# =============================================================================
+
+package:order-service-java:
+  stage: package
+  image: maven:3.9-eclipse-temurin-17-alpine
+  cache:
+    <<: *maven_cache
+  needs:
+    - job: test:order-service-java
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:sonarqube
+  script:
+    - cd order-service
+    - mvn $MAVEN_CLI_OPTS package -DskipTests
+  artifacts:
+    paths:
+      - order-service/target/*.jar
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+package:inventory-service-java:
+  stage: package
+  image: maven:3.9-eclipse-temurin-17-alpine
+  cache:
+    <<: *maven_cache
+  needs:
+    - job: test:inventory-service-java
+      artifacts: true
+    - job: security:trivy-fs-scan
+    - job: security:sonarqube
+  script:
+    - cd inventory-service
+    - mvn $MAVEN_CLI_OPTS package -DskipTests
+  artifacts:
+    paths:
+      - inventory-service/target/*.jar
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# PUSH STAGE - 镜像构建和推送阶段
+# =============================================================================
+
+# 模板: Docker构建和推送
+.docker_build_template: &docker_build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USER" --password-stdin $HARBOR_REGISTRY
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_DRIVER: overlay2
+
+# Go服务镜像推送
+push:api-gateway-go:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:api-gateway-go
+      artifacts: true
+  script:
+    - docker build -f api-gateway/Dockerfile -t $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-api-gateway:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-api-gateway:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-api-gateway:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-api-gateway:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-api-gateway:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-api-gateway:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:user-service-go:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:user-service-go
+      artifacts: true
+  script:
+    - docker build -f user-service/Dockerfile -t $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-user-service:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-user-service:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-user-service:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-user-service:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-user-service:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-user-service:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:payment-service-go:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:payment-service-go
+      artifacts: true
+  script:
+    - docker build -f payment-service/Dockerfile -t $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-payment-service:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-payment-service:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-payment-service:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-payment-service:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-payment-service:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-payment-service:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:notification-service-go:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:notification-service-go
+      artifacts: true
+  script:
+    - docker build -f notification-service/Dockerfile -t $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-notification-service:$IMAGE_TAG .
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-notification-service:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-notification-service:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-notification-service:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-notification-service:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-notification-service:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# Java服务镜像推送
+push:order-service-java:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:order-service-java
+      artifacts: true
+  script:
+    - docker build -f order-service/Dockerfile -t $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-order-service:$IMAGE_TAG ./order-service
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-order-service:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-order-service:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-order-service:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-order-service:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-order-service:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+push:inventory-service-java:
+  stage: push
+  <<: *docker_build
+  needs:
+    - job: package:inventory-service-java
+      artifacts: true
+  script:
+    - docker build -f inventory-service/Dockerfile -t $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-inventory-service:$IMAGE_TAG ./inventory-service
+    - docker tag $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-inventory-service:$IMAGE_TAG $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-inventory-service:latest
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-inventory-service:$IMAGE_TAG
+    - docker push $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-inventory-service:latest
+    - docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+      aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL
+      $HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-inventory-service:$IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+
+# =============================================================================
+# DEPLOY STAGE - 部署阶段
+# =============================================================================
+
+deploy:trigger-argocd:
+  stage: deploy
+  image: alpine/curl:latest
+  needs:
+    - job: push:api-gateway-go
+    - job: push:user-service-go
+    - job: push:payment-service-go
+    - job: push:notification-service-go
+    - job: push:order-service-java
+    - job: push:inventory-service-java
+  script:
+    - |
+      echo "Triggering ArgoCD sync for all services..."
+      for service in api-gateway user-service payment-service notification-service order-service inventory-service; do
+        echo "Syncing $ARGOCD_APP_PREFIX-$service..."
+        curl -X POST "$ARGOCD_SERVER/api/v1/applications/$ARGOCD_APP_PREFIX-$service/sync"
+          -H "Authorization: Bearer $ARGOCD_TOKEN"
+          -H "Content-Type: application/json"
+          -d '{"prune": true, "dryRun": false, "strategy": {"hook": {"force": false}}}'
+      done
+  environment:
+    name: production
+    url: http://mall-demo.local
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+      when: manual
+
+deploy:kubectl:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  needs:
+    - job: push:api-gateway-go
+    - job: push:user-service-go
+    - job: push:payment-service-go
+    - job: push:notification-service-go
+    - job: push:order-service-java
+    - job: push:inventory-service-java
+  script:
+    - kubectl config use-context $K8S_CONTEXT
+    # Go服务
+    - kubectl set image deployment/api-gateway
+      api-gateway=$HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-api-gateway:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/user-service
+      user-service=$HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-user-service:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/payment-service
+      payment-service=$HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-payment-service:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/notification-service
+      notification-service=$HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-notification-service:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    # Java服务
+    - kubectl set image deployment/order-service
+      order-service=$HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-order-service:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    - kubectl set image deployment/inventory-service
+      inventory-service=$HARBOR_REGISTRY/$HARBOR_PROJECT/demo-c-inventory-service:$IMAGE_TAG
+      -n $K8S_NAMESPACE
+    # 等待滚动更新完成
+    - kubectl rollout status deployment/api-gateway -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/user-service -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/payment-service -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/notification-service -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/order-service -n $K8S_NAMESPACE --timeout=300s
+    - kubectl rollout status deployment/inventory-service -n $K8S_NAMESPACE --timeout=300s
+  environment:
+    name: production
+    url: http://mall-demo.local
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+      when: manual
+
+# =============================================================================
+# 辅助任务
+# =============================================================================
+
+# 生成SBOM
+sbom:generate:
+  stage: .post
+  image: golang:${GO_VERSION}-alpine
+  needs:
+    - job: package:api-gateway-go
+      artifacts: true
+    - job: package:user-service-go
+      artifacts: true
+    - job: package:payment-service-go
+      artifacts: true
+    - job: package:notification-service-go
+      artifacts: true
+    - job: package:order-service-java
+      artifacts: true
+    - job: package:inventory-service-java
+      artifacts: true
+  before_script:
+    - apk add --no-cache curl
+    - curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+  script:
+    # Go项目SBOM
+    - syft packages dir:api-gateway -o cyclonedx-json > sbom-api-gateway.json
+    - syft packages dir:user-service -o cyclonedx-json > sbom-user-service.json
+    - syft packages dir:payment-service -o cyclonedx-json > sbom-payment-service.json
+    - syft packages dir:notification-service -o cyclonedx-json > sbom-notification-service.json
+    # Java项目SBOM (使用Maven插件)
+    - cd order-service && mvn $MAVEN_CLI_OPTS org.cyclonedx:cyclonedx-maven-plugin:makeBom
+    - cd ../inventory-service && mvn $MAVEN_CLI_OPTS org.cyclonedx:cyclonedx-maven-plugin:makeBom
+  artifacts:
+    paths:
+      - sbom-*.json
+      - order-service/target/bom.json
+      - inventory-service/target/bom.json
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+  allow_failure: true
+
+# 清理工作
+cleanup:
+  stage: .post
+  image: alpine:latest
+  script:
+    - echo "Cleaning up temporary artifacts..."
+  when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/

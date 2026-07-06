@@ -1,0 +1,30 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}-mall-demo
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- range $key, $value := .Values.serviceMonitor.labels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+    app.kubernetes.io/part-of: mall-demo
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: mall-demo
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.global.namespace }}
+  endpoints:
+    - port: http
+      path: {{ .Values.serviceMonitor.path }}
+      interval: {{ .Values.serviceMonitor.interval }}
+      scrapeTimeout: 10s
+      honorLabels: true
+      metricRelabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_app]
+          targetLabel: service
+          replacement: $1
+          action: replace
+{{- end }}

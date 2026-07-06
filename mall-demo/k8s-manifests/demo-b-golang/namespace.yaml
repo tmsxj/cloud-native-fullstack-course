@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-b-golang
+  labels:
+    app.kubernetes.io/part-of: mall-demo
+    app.kubernetes.io/environment: demo-b
+    istio-injection: enabled

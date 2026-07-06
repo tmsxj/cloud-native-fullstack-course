@@ -1,0 +1,103 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 192.168.1.61:8848
+        namespace: public
+        register-enabled: true
+    gateway:
+      # Global CORS configuration
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowed-origins: "*"
+            allowed-methods: "*"
+            allowed-headers: "*"
+      # Route definitions
+      routes:
+        # User Service
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/users/**
+          filters:
+            - StripPrefix=0
+            - name: CircuitBreaker
+              args:
+                name: userCircuitBreaker
+                fallbackUri: forward:/fallback/user
+
+        # Order Service
+        - id: order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/api/orders/**
+          filters:
+            - StripPrefix=0
+            - name: CircuitBreaker
+              args:
+                name: orderCircuitBreaker
+                fallbackUri: forward:/fallback/order
+
+        # Inventory Service
+        - id: inventory-service
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/inventory/**
+          filters:
+            - StripPrefix=0
+            - name: CircuitBreaker
+              args:
+                name: inventoryCircuitBreaker
+                fallbackUri: forward:/fallback/inventory
+
+        # Payment Service
+        - id: payment-service
+          uri: lb://payment-service
+          predicates:
+            - Path=/api/payments/**
+          filters:
+            - StripPrefix=0
+            - name: CircuitBreaker
+              args:
+                name: paymentCircuitBreaker
+                fallbackUri: forward:/fallback/payment
+
+        # Notification Service
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/notifications/**
+          filters:
+            - StripPrefix=0
+            - name: CircuitBreaker
+              args:
+                name: notificationCircuitBreaker
+                fallbackUri: forward:/fallback/notification
+
+      # Discovery locator for automatic service routing
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    com.demo.gateway: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always
+    gateway:
+      enabled: true

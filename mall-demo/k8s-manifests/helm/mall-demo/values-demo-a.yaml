@@ -1,0 +1,34 @@
+# Demo-A: Pure Spring Boot
+global:
+  namespace: "demo-a-springboot"
+  imagePrefix: "demo-a"
+
+imagePrefix: "demo-a"
+
+apiGateway:
+  image: "demo-a-api-gateway"
+  ingress:
+    enabled: true
+    host: "mall-a.local"
+
+userService:
+  image: "demo-a-user-service"
+  dbName: "mall_user"
+
+orderService:
+  image: "demo-a-order-service"
+  dbName: "mall_order"
+
+inventoryService:
+  image: "demo-a-inventory-service"
+  dbName: "mall_inventory"
+
+paymentService:
+  image: "demo-a-payment-service"
+  dbName: "mall_payment"
+
+notificationService:
+  image: "demo-a-notification-service"
+
+serviceMonitor:
+  path: "/actuator/prometheus"

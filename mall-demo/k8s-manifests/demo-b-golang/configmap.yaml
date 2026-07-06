@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mall-config
+  namespace: demo-b-golang
+  labels:
+    app.kubernetes.io/part-of: mall-demo
+data:
+  DB_HOST: "192.168.1.61"
+  DB_PORT: "3306"
+  DB_USERNAME: "root"
+  DB_PASSWORD: "Harbor12345"
+  REDIS_HOST: "192.168.1.61"
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: "Harbor12345"
+  KAFKA_BROKERS: "192.168.1.61:9092"
+  NACOS_HOST: "192.168.1.61"
+  NACOS_PORT: "8848"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector.monitoring:4317"
+  DEPLOY_ENV: "production"
+  USER_DB_NAME: "mall_user"
+  ORDER_DB_NAME: "mall_order"
+  INVENTORY_DB_NAME: "mall_inventory"
+  PAYMENT_DB_NAME: "mall_payment"
