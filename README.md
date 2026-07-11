@@ -6,6 +6,8 @@
 > **K8s版本**: v1.28.15  
 > **Harbor**: 192.168.1.61:80 (HTTP)  
 > **总模块数**: 35个核心模块 (00-34) + 附录 + 全链路综合实战 + 3套微服务Demo
+>
+> 📡 同步镜像: 本仓库同时托管于 GitHub 与 Gitee（[hlxb/cloud-native-fullstack-course](https://gitee.com/hlxb/cloud-native-fullstack-course)），`git push` 自动双推，两端内容一致。
 
 ---
 
